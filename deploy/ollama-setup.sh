@@ -4,6 +4,13 @@ set -euo pipefail
 ENV_FILE="/etc/ecdat/ecdat.env"
 DEFAULT_MODEL="qwen3:1.7b"
 
+SUDO=""
+if [[ $EUID -ne 0 ]]; then
+    if command -v sudo >/dev/null 2>&1; then
+        SUDO="sudo"
+    fi
+fi
+
 MODEL_NAME="${DEFAULT_MODEL}"
 if [[ -f "${ENV_FILE}" ]]; then
     MODEL_NAME=$(grep '^ECDAT_AI_MODEL=' "${ENV_FILE}" | cut -d'=' -f2 | tr -d '"' | tr -d "'" || echo "${DEFAULT_MODEL}")
@@ -25,15 +32,16 @@ echo "[+] Ollama CLI verified"
 # 2. Configure Ollama systemd override to ensure binding to 127.0.0.1:11434 only
 if [[ -d "/etc/systemd/system" ]]; then
     echo "[*] Ensuring Ollama systemd service binds ONLY to loopback 127.0.0.1..."
-    sudo mkdir -p /etc/systemd/system/ollama.service.d
-    cat <<'EOF' | sudo tee /etc/systemd/system/ollama.service.d/override.conf >/dev/null
+    ${SUDO} mkdir -p /etc/systemd/system/ollama.service.d
+    cat <<'EOF' | ${SUDO} tee /etc/systemd/system/ollama.service.d/override.conf >/dev/null
 [Service]
 Environment="OLLAMA_HOST=127.0.0.1:11434"
 Environment="OLLAMA_ORIGINS=http://127.0.0.1:*,http://localhost:*"
 Environment="OLLAMA_NOPRUNE=1"
 EOF
-    sudo systemctl daemon-reload || true
-    sudo systemctl restart ollama || true
+    ${SUDO} systemctl daemon-reload || true
+    ${SUDO} systemctl enable --now ollama || true
+    ${SUDO} systemctl restart ollama || true
 fi
 
 # 3. Verify Ollama service responsiveness on 127.0.0.1:11434
@@ -50,7 +58,7 @@ done
 
 if [[ "${READY}" -ne 1 ]]; then
     echo "ERROR: Ollama is not responding on 127.0.0.1:11434." >&2
-    echo "Check Ollama service status: sudo systemctl status ollama" >&2
+    echo "Check Ollama service status: ${SUDO} systemctl status ollama" >&2
     exit 1
 fi
 echo "[+] Ollama local server is active and bound to 127.0.0.1:11434"
@@ -68,5 +76,19 @@ else
     exit 1
 fi
 
+# 6. Basic local inference health test
+echo "[*] Running basic local inference health test with model '${MODEL_NAME}'..."
+TEST_RESP=$(curl -s -X POST "${OLLAMA_HOST}/api/generate" \
+    -H "Content-Type: application/json" \
+    -d "{\"model\":\"${MODEL_NAME}\",\"prompt\":\"Respond with OK\",\"stream\":false,\"options\":{\"num_predict\":10}}" \
+    --max-time 30 2>/dev/null || echo "")
+
+if [[ -z "${TEST_RESP}" ]] || ! echo "${TEST_RESP}" | grep -q '"response"'; then
+    echo "ERROR: Local inference test failed or timed out for model '${MODEL_NAME}'." >&2
+    exit 1
+fi
+echo "[+] Basic inference test PASSED."
+
 echo ""
-echo "[+] Ollama local AI runtime is properly configured and isolated to 127.0.0.1."
+echo "[+] Ollama local AI runtime is properly configured, verified, and isolated to 127.0.0.1."
+

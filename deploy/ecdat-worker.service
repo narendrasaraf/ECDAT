@@ -1,18 +1,20 @@
 [Unit]
 Description=ECDAT Trusted Host Worker Service
-After=network.target ecdat-api.service docker.service
-Wants=ecdat-api.service docker.service
+After=network.target docker.service ecdat-api.service
+Wants=docker.service ecdat-api.service
 
 [Service]
 Type=simple
 User=ecdat
-Group=docker
+Group=ecdat
+SupplementaryGroups=docker
 WorkingDirectory=/opt/ecdat
 Environment="PYTHONPATH=/opt/ecdat/services/api"
 EnvironmentFile=/etc/ecdat/ecdat.env
 ExecStart=/opt/ecdat/.venv/bin/python -m ecdat.worker
-Restart=always
-RestartSec=3
+Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
+

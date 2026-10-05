@@ -6,6 +6,13 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "${ROOT_DIR}"
 
+SUDO=""
+if [[ $EUID -ne 0 ]]; then
+    if command -v sudo >/dev/null 2>&1; then
+        SUDO="sudo"
+    fi
+fi
+
 echo "=================================================================="
 echo " ECDAT Production Linux Installation Script "
 echo "=================================================================="
@@ -68,7 +75,30 @@ else
 fi
 echo "[+] Docker Compose verified (${DOCKER_COMPOSE_CMD})"
 
-# 6. Create Python virtual environment if missing
+# 6. Ensure dedicated system user 'ecdat' exists
+echo "[*] Checking dedicated system user 'ecdat'..."
+if id -u ecdat >/dev/null 2>&1; then
+    echo "[+] System user 'ecdat' already exists."
+else
+    echo "[*] Creating system user 'ecdat' with /usr/sbin/nologin..."
+    if command -v useradd >/dev/null 2>&1; then
+        ${SUDO} useradd -r -s /usr/sbin/nologin -d "${ROOT_DIR}" -c "ECDAT Service User" ecdat
+        echo "[+] Created system user 'ecdat'."
+    else
+        echo "ERROR: 'useradd' command not available to create user 'ecdat'." >&2
+        exit 1
+    fi
+fi
+
+# Add ecdat user to docker group if docker group exists
+if getent group docker >/dev/null 2>&1; then
+    if ! id -nG ecdat 2>/dev/null | grep -qw docker; then
+        ${SUDO} usermod -aG docker ecdat
+        echo "[+] Added user 'ecdat' to group 'docker'."
+    fi
+fi
+
+# 7. Create Python virtual environment if missing
 if [[ ! -d ".venv" ]]; then
     echo "[*] Creating Python virtual environment in .venv..."
     python3 -m venv .venv
@@ -76,11 +106,11 @@ else
     echo "[+] Virtual environment .venv already exists."
 fi
 
-echo "[*] Installing Python requirements from requirements.lock..."
+echo "[*] Installing/updating Python requirements from requirements.lock..."
 .venv/bin/pip install --upgrade pip >/dev/null
 .venv/bin/pip install -r requirements.lock
 
-# 7. Install frontend dependencies and build React web app
+# 8. Install frontend dependencies and build React web app
 echo "[*] Installing web dependencies in apps/web..."
 (cd apps/web && npm ci)
 
@@ -90,16 +120,25 @@ echo "[*] Building React frontend application..."
 echo "[*] Installing chain dependencies in packages/chain..."
 (cd packages/chain && npm ci)
 
-# 8. Build Dockerfile.scanner as ecdat-scanner:local
+# 9. Build Dockerfile.scanner as ecdat-scanner:local
 echo "[*] Building isolated scanner Docker image (ecdat-scanner:local)..."
 docker build -f Dockerfile.scanner -t ecdat-scanner:local .
 
-# 9. Create required runtime directories under .ecdat
+# 10. Create and permission required runtime directories under .ecdat
 echo "[*] Creating runtime directories under .ecdat..."
-mkdir -p .ecdat/logs .ecdat/staging .ecdat/exports
+mkdir -p .ecdat/logs .ecdat/staging .ecdat/exports .ecdat/artifacts
+if id -u ecdat >/dev/null 2>&1; then
+    ${SUDO} chown -R ecdat:ecdat .ecdat
+    ${SUDO} chmod 750 .ecdat
+fi
 
-# 10. Run database migrations if environment file is already present
+# 11. Ensure /etc/ecdat exists and run database migrations if environment file is present
+${SUDO} mkdir -p /etc/ecdat
 if [[ -f "/etc/ecdat/ecdat.env" ]]; then
+    if id -u ecdat >/dev/null 2>&1; then
+        ${SUDO} chown root:ecdat /etc/ecdat/ecdat.env
+        ${SUDO} chmod 640 /etc/ecdat/ecdat.env
+    fi
     echo "[*] /etc/ecdat/ecdat.env detected. Running Alembic database migrations..."
     set -a
     source /etc/ecdat/ecdat.env
@@ -117,16 +156,17 @@ echo "=================================================================="
 echo ""
 echo "Follow these remaining manual steps to complete deployment:"
 echo ""
-echo "1. Configure Production Environment:"
+echo "1. Configure Production Environment & Secrets:"
 echo "   sudo mkdir -p /etc/ecdat"
-echo "   sudo cp deploy/ecdat.env.example /etc/ecdat/ecdat.env"
-echo "   sudo chmod 600 /etc/ecdat/ecdat.env"
+echo "   sudo cp -n deploy/ecdat.env.example /etc/ecdat/ecdat.env"
+echo "   sudo chown root:ecdat /etc/ecdat/ecdat.env"
+echo "   sudo chmod 640 /etc/ecdat/ecdat.env"
 echo "   sudo nano /etc/ecdat/ecdat.env"
 echo ""
 echo "2. Start PostgreSQL Database Container:"
 echo "   sudo ${DOCKER_COMPOSE_CMD} -f deploy/docker-compose.prod.yml --env-file /etc/ecdat/ecdat.env up -d postgres"
 echo ""
-echo "3. Run Database Migrations:"
+echo "3. Run Database Migrations (if not run automatically above):"
 echo "   set -a && source /etc/ecdat/ecdat.env && set +a"
 echo "   PYTHONPATH=services/api .venv/bin/python -m alembic upgrade head"
 echo ""
@@ -140,7 +180,9 @@ echo "   sudo systemctl enable --now ecdat-api ecdat-worker"
 echo ""
 echo "6. Setup Nginx and Let's Encrypt HTTPS:"
 echo "   sudo cp deploy/nginx/ecdat.conf /etc/nginx/sites-available/ecdat"
+echo "   sudo sed -i 's/ecdat.example.com/your-domain.com/g' /etc/nginx/sites-available/ecdat"
 echo "   sudo ln -sf /etc/nginx/sites-available/ecdat /etc/nginx/sites-enabled/ecdat"
 echo "   sudo nginx -t && sudo systemctl reload nginx"
-echo "   sudo certbot --nginx -d ecdat.example.com"
+echo "   sudo certbot --nginx -d your-domain.com"
 echo ""
+
