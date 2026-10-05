@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: ecdat-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ecdat
+      POSTGRES_USER: ecdat
+      POSTGRES_PASSWORD: ${ECDAT_POSTGRES_PASSWORD:?Set ECDAT_POSTGRES_PASSWORD in /etc/ecdat/ecdat.env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=50", "-c", "work_mem=8MB"]
+    mem_limit: 512m
+    volumes:
+      - ecdat-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecdat -d ecdat"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  ecdat-db:

@@ -1,0 +1,11 @@
+FROM python:3.12-slim
+ADD https://github.com/anchore/syft/releases/download/v1.52.0/syft_1.52.0_linux_amd64.tar.gz /tmp/syft.tar.gz
+RUN echo "caeedb81fb0491615f1ebd1761e4145d41ee86dd2cc7bf80669f9f5ad9d6133d  /tmp/syft.tar.gz" | sha256sum -c - && tar -xzf /tmp/syft.tar.gz -C /usr/local/bin syft && rm /tmp/syft.tar.gz
+WORKDIR /app
+COPY requirements.scanner.txt /app/
+RUN pip install --no-cache-dir -r requirements.scanner.txt
+COPY services/api/ecdat/discovery /app/ecdat/discovery
+COPY services/api/ecdat/scan_runner.py /app/ecdat/scan_runner.py
+ENV PYTHONPATH=/app PYTHONDONTWRITEBYTECODE=1 ECDAT_ENABLE_SYFT=1
+USER 65532:65532
+ENTRYPOINT ["python", "-m", "ecdat.scan_runner", "/input"]

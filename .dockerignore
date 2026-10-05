@@ -1,0 +1,8 @@
+**/node_modules
+.venv
+.ecdat
+.git
+**/__pycache__
+apps/web/dist
+packages/chain/.npm-cache
+.pytest_cache

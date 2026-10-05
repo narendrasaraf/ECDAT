@@ -1,0 +1,25 @@
+{
+  "name": "@ecdat/chain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "compile": "node scripts/compile.mjs",
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
+    "local": "node scripts/local.mjs",
+    "deploy": "node scripts/deploy.mjs",
+    "deploy:sepolia": "node scripts/deploy-sepolia.mjs",
+    "bundle": "node scripts/bundle.mjs"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "5.6.1",
+    "@openzeppelin/merkle-tree": "1.0.8",
+    "canonicalize": "5.1.0",
+    "ethers": "6.17.0",
+    "solc": "0.8.37"
+  },
+  "overrides": {
+    "tmp": "0.2.7",
+    "uuid": "11.1.1"
+  }
+}

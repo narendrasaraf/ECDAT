@@ -1,0 +1,13 @@
+[project]
+name = "ecdat"
+version = "0.1.0"
+description = "Evidence-centered cryptographic discovery and migration workbench"
+requires-python = ">=3.12"
+dependencies = ["fastapi", "uvicorn", "sqlalchemy", "psycopg[binary]", "alembic", "pydantic-settings", "httpx", "argon2-cffi", "rfc8785", "jsonschema", "pyelftools", "cryptography", "tree-sitter", "tree-sitter-javascript", "tree-sitter-typescript", "python-multipart", "psutil"]
+
+[tool.pytest.ini_options]
+pythonpath = ["services/api"]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["services/api"]

@@ -1,0 +1,12 @@
+.venv/
+node_modules/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+.ecdat/
+dist/
+coverage/
+*.log
+packages/chain/artifacts/
+packages/chain/state/
